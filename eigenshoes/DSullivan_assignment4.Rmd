@@ -1,0 +1,74 @@
+---
+title: "Homework 605 week3"
+author: "Daniel Sullivan"
+date: "9/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(jpeg)
+```
+
+
+
+```{r}
+a<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53632.jpg')
+b<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53632.jpg')
+c<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53655.jpg')
+d<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53663.jpg')
+e<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53697.jpg')
+f<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54018.jpg')
+g<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54067.jpg')
+h<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54106.jpg')
+i<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54130.jpg')
+j<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54148.jpg')
+k<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54157.jpg')
+l<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54165.jpg')
+m<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54172.jpg')
+n<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53626.jpg')
+
+
+im<-array(rep(0,14*2500*1200*3),dim=c(14, 2500, 1200,3))
+
+im[1,,,]<-array(a, dim=c(1, 1200,2500 ,3))
+im[2,,,]<-array(b, dim=c(1, 1200,2500 ,3))
+im[3,,,]<-array(c, dim=c(1, 1200,2500 ,3))
+im[4,,,]<-array(d, dim=c(1, 1200,2500 ,3))
+im[5,,,]<-array(e, dim=c(1, 1200,2500 ,3))
+im[6,,,]<-array(f, dim=c(1, 1200,2500 ,3))
+im[7,,,]<-array(g, dim=c(1, 1200,2500 ,3))
+im[8,,,]<-array(h, dim=c(1, 1200,2500 ,3))
+im[9,,,]<-array(i, dim=c(1, 1200,2500 ,3))
+im[10,,,]<-array(j, dim=c(1, 1200,2500 ,3))
+im[11,,,]<-array(k, dim=c(1, 1200,2500 ,3))
+im[12,,,]<-array(l, dim=c(1, 1200,2500 ,3))
+im[13,,,]<-array(m, dim=c(1, 1200,2500 ,3))
+im[14,,,]<-array(n, dim=c(1, 1200,2500 ,3))
+
+new_im <-im
+dim(new_im)<-c(14, 1200*2500*3)
+pca<- princomp(t(as.matrix(new_im)), scores = TRUE, cor = TRUE)
+
+tpca<-t(pca$scores)
+dim(tpca)=c(14,1200,2500,3)
+
+
+  writeJPEG(tpca[1,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_1.jpg')
+    writeJPEG(tpca[2,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_2.jpg')
+    writeJPEG(tpca[3,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_3.jpg')
+    writeJPEG(tpca[4,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_4.jpg')
+    writeJPEG(tpca[5,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_5.jpg')
+  writeJPEG(tpca[6,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_6.jpg')
+  writeJPEG(tpca[7,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_7.jpg')
+  writeJPEG(tpca[8,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_8.jpg')
+  writeJPEG(tpca[9,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_9.jpg')
+  writeJPEG(tpca[10,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_10.jpg')
+  
+
+
+
