@@ -1,0 +1,482 @@
+---
+title: "Final assignment group 4"
+author: Deepika Dilip, Tora Mullings, Daniel Sullivan, Deepa Sharma, Bikram Barua,
+  Newman Okereafor
+date: '2022-11-24'
+output: 
+  pdf_document:
+    toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning = F, message = F)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+library(corrplot)
+library(reshape2)
+library(knitr)
+library(broom)
+library(caret)
+library(leaps)
+library(MASS)
+library(magrittr)
+library(betareg)
+library(pscl)
+library(gtsummary)
+library(nnet)
+library(readr)
+library(fastDummies)
+library(ComplexHeatmap)
+library(kableExtra)
+library(xgboost)
+```
+
+
+# Abstract:
+
+Maternal mortality is a leading public health issue in Bangladesh, with [173 deaths per 100k births](https://www.macrotrends.net/countries/BGD/bangladesh/maternal-mortality-rate). Yet with improvements in public health surveillance, a preventative responsive could be better informed with biomarker data and accurate risk predictions. For this project, we utilize multinomial models to quantify the contribution of biomarkers in predicting mortality risk.
+
+# Key words:
+
+maternal health, clinical outcomes
+
+# Introduction:
+
+Maternal mortality is a leading public health issue in Bangladesh. Advances in public health outreach and medical pipelines have reduced maternal mortality rates, but there remains a glaring gap, especially when considering additional factors, such as socioeconomic status. One of the [WHO Sustainable Development Goals](https://www.who.int/data/gho/data/themes/topics/indicator-groups/indicator-group-details/GHO/maternal-mortality) was to reduce the global mortality ratio to less than 70 deaths per 100k births 
+
+Here, we further explore mortality risk as a product of standard clinical indicators.  We obtained this dataset from the [UCI repository](https://archive.ics.uci.edu/ml/datasets/Maternal+Health+Risk+Data+Set). Data was aggregated from different sites, including rural and urban health centers.
+
+According to the WHO approximately 810 women die daily due to pregnancy complications (1). With such a high rate of death associated with childbirth it is important to maximize early interventions in high-risk pregnancies in order to monitor and start early intervention to save both the lives of the mother and child. Because of this need, pregnancy has been the focus of many data scientists research in developing many predictive algorithms to try and aid in identifying at risk pregnancies, best emergency interventions and various other aspects to help both mothers and doctors. For this reason, we want to look at identifying low mid and high-risk pregnancies through regression and machine learning methods in order to aid in identifying individuals who could be helped through early intervention.
+
+
+
+
+
+# Literature review:
+
+At risk pregnancies remain a hot topic of research despite many advances in technology and a shrinking pregnancy/childbirth mortality rate. Predictive modeling has been implemented in several ways to aid in reducing pregnancy risks. There are three major groups of studies that have been performed. There were three major areas of research in these studies. The largest group predicted risks and complications involved with the pregnancy in specific scenarios (3)() as we are trying to asses with our data set. Many papers also covered predicting delivery methods as well as successful vaginal delivery (2). And the last big area of study looks at predicting in vitro fertilization success rates. Our analysis Is of the first group where we are trying to predict at risk pregnancies however the area where we differ from most of these studies is through scope. Most studies that are trying to predict complications do it in a much more specific scope. For example, some studies only predict preterm birth, or complications with vaginal birth while our approach just focuses on a generally high-risk birth and works off mostly basic vitals. Additionally, our analysis works through generalized linear models and progresses into simpler machine learning where as these other studies implement more in depth and domain specific methods. 
+
+
+1 Trends in maternal mortality 2000 to 2017: estimates by who, unicef, unfpa, world bank group and the united nations population division. https://www.unfpa.org/featured-publication/trends-maternal-mortality-2000-2017. Accessed 10 Jan 2021.
+
+2 Birara M, Gebrehiwot Y. Factors associated with success of vaginal birth after one caesarean section (vbac) at three teaching hospitals in addis ababa, ethiopia: a case control study. BMC Pregnancy Childbirth. 2013;13(1):1–6.
+
+3 Gao C, Osmundson S, Edwards DRV, Jackson GP, Malin BA, Chen Y. Deep learning predicts extreme preterm birth from electronic health records. J Biomed Inform. 2019;100:103334.
+
+4 Islam, Muhammed N, Mustafina, Sumaiya N, Mahmud, Tahsin, Khan, Nafiz I Machine learning to predict pregnancy outcomes: a systematic review, synthesizing framework and future research agenda
+
+
+
+# Methodology:
+
+## Exploratory Data Analysis:
+
+```{r}
+MHRD<-read.csv("https://raw.githubusercontent.com/TheSaltyCrab/DATA621_Final/main/Maternal%20Health%20Risk%20Data%20Set.csv")
+```
+
+
+```{r}
+head(MHRD,5) %>% kable()
+```
+
+### Data Attributes
+
+* `Age`: Any ages in years when a women during pregnant.
+
+* `SystolicBP`: Upper value of Blood Pressure in mmHg, another significant attribute during pregnancy.
+
+* `DiastolicBP`: Lower value of Blood Pressure in mmHg, another significant attribute during pregnancy.
+
+* `BS`: Blood glucose levels is in terms of a molar concentration, mmol/L.
+
+* `HeartRate`: A normal resting heart rate in beats per minute.
+
+* `Risk Level`: Predicted Risk Intensity Level during pregnancy considering the previous attribute.
+
+### Data exploration
+
+```{r}
+# MHRD<-MHRD%>% mutate(Risk_num = case_when(
+#     str_detect(.$RiskLevel, "low risk") ~ "0",
+#     str_detect(.$RiskLevel, "mid risk") ~ "1",
+#     str_detect(.$RiskLevel, "high risk") ~ "2",
+#     TRUE ~ as.character(.$RiskLevel)))
+MHRD = MHRD %>% mutate(RiskLevel = factor(RiskLevel, levels = c("low risk", "mid risk", "high risk")))
+
+```
+
+We can start by making a correlation plot to compare continuous values. Age is positively correlated with systolic and diastolic blood pressure. 
+
+```{r}
+corrplot(cor( select_if(MHRD, is.numeric), use = "complete.obs"), tl.col="black", tl.cex=0.6, order='AOE')
+```
+
+The first step is visualizing data distribution by risk. Here we can see age is skewed, and the extremities of blood pressure and glucose levels are flagged as high risk.
+
+```{r}
+lst.histogram = list()
+for (i in names(MHRD)[1:6]) {
+  MHRD.sub = MHRD %>% select(i, "RiskLevel")
+  colnames(MHRD.sub) = c("value", "RiskLevel")
+  lst.histogram[[i]] = ggplot(aes(value, fill = RiskLevel), data = MHRD.sub) + geom_histogram() + labs(x = i, y = "Count") + scale_fill_manual(values = c("low risk" = "navyblue", "mid risk" = "grey", "high risk" = "red"))
+}
+ggpubr::ggarrange(plotlist = lst.histogram, ncol = 2, nrow = 3)
+```
+
+```{r}
+ggplot(aes(RiskLevel, fill = RiskLevel), data = MHRD) + geom_bar(stat = "count") + labs(x = "Risk Level", y = "Count") + scale_fill_manual(values = c("low risk" = "navyblue", "mid risk" = "grey", "high risk" = "red")) + labs(title = "Risk Level Counts")
+```
+
+One approach we can take is implementing unsupervised clustering since many of the biomarkers are continuous. We can do this by forming a matrix of indicators and seeing if risk levels clusters. From this analysis, we see 6 distinct subgroups: 2 high risk, 3 low risk, and 1 mid risk (with some heterogeneity).
+
+```{r}
+mat.MHRD = MHRD %>% select(-c("RiskLevel")) %>% as.matrix()
+rownames(mat.MHRD) = rownames(MHRD)
+mat.MHRD = t(mat.MHRD)
+tree = hclust(dist(t(mat.MHRD), method = "euclidean"))
+tree.groups = cutree(hclust(dist(t(mat.MHRD), method = "euclidean")), k = 6)
+
+mat.risk = MHRD %>% select(c("RiskLevel")) %>% as.matrix()
+
+Heatmap(t(mat.risk), cluster_columns  = tree, cluster_rows = F, col =c("low risk" = "navyblue", "mid risk" = "grey", "high risk" = "red"),  heatmap_height = unit(2, "cm"), column_split = 6)
+```
+
+## Multinomial Regression 
+
+First we partitioned the dataset using a 70-30 split. We initially fit a full model with all included variables as predictors. Next, we fit a series of multinomial models, starting with a full model. We then implemented feature selection based on statistical significance to improve accuracy.
+
+```{r}
+set.seed(100)
+trainingRows <- sample(1:nrow(MHRD), 0.7*nrow(MHRD))
+training <- MHRD[trainingRows, ]
+test <- MHRD[-trainingRows, ]
+```
+
+
+# Experimentation and Results:
+
+Describe the specifics of what you did (data exploration, data preparation, model building, model selection, model evaluation, etc.), and what you found out (statistical analyses, interpretation and discussion of the results, etc.).
+
+## XGBoost
+
+We also decided to try using a model that combined previous models with new ones, subsequently increasing accuracy. Therefore, we decided to fit the eXtreme Gradient Boosting algorthim from the `xgboost` package. In this case, however, we have to split our outcome: one model with predict high risk while the other will predict medium risk.
+
+# Results
+
+
+
+## Full Model:
+
+### Resulting Coefficients:
+
+```{r}
+mn_model<-multinom(RiskLevel ~ ., data=training, trace = F)
+data.frame(summary(mn_model)$coefficients/summary(mn_model)$standard.errors) %>% kable() %>% kableExtra::kable_styling(full_width = F) 
+
+```
+
+
+### Confusion Matrix:
+```{r}
+predicted_scores <- predict (mn_model, test, "probs")
+predicted_class <- predict (mn_model, test)
+table(predicted_class,test$RiskLevel)
+#mean(as.character(predicted_class) != as.character(test$RiskLevel))
+#multinomial model 1 (all predictors)
+```
+
+```{r, echo=FALSE}
+mn_model<-multinom(RiskLevel ~ ., data=training)
+predicted_scores <- predict (mn_model, test, "probs")
+predicted_class <- predict (mn_model, test)
+table(predicted_class,test$RiskLevel)
+print(paste0("accuracy=",mean(as.character(predicted_class) == as.character(test$RiskLevel))))
+print(paste0("AIC=",mn_model$AIC))
+
+t(confusionMatrix(data = predicted_class, reference = test$RiskLevel)$byClass) %>% knitr::kable()
+
+```
+
+
+## Age and Systolic BP as Predictors: 
+
+### Model Coefficients
+```{r}
+mn_model2<-multinom(RiskLevel ~ Age + SystolicBP + BS, data=training, trace = F)
+# summary(mn_model2)
+data.frame(summary(mn_model2)$coefficients/summary(mn_model2)$standard.errors) %>% kable() 
+
+```
+
+### Confusion Matrix
+```{r}
+predicted_scores2 <- predict (mn_model2, test, "probs")
+predicted_class2 <- predict (mn_model2, test)
+table(predicted_class2,test$RiskLevel)
+
+```
+
+```{r, echo=FALSE}
+mn_model2<-multinom(RiskLevel ~ Age + SystolicBP + BS, data=training)
+
+# table(predicted_class2,test$RiskLevel)
+
+t(confusionMatrix(data = predicted_class2, reference = test$RiskLevel)$byClass) %>% knitr::kable()
+```
+
+
+## Blood Sugar and Systolic BP as Predictors: 
+
+### Model Coefficients:
+
+```{r}
+mn_model3 <-multinom(RiskLevel ~ BS+SystolicBP, data=training, trace = F)
+# summary(mn_model3)
+
+data.frame(summary(mn_model3)$coefficients/summary(mn_model3)$standard.errors) %>% kable() 
+
+#mean(as.character(predicted_class3) != as.character(test$RiskLevel))
+
+```
+
+### Confusion Matrix:
+```{r}
+predicted_scores3 <- predict (mn_model3, test, "probs")
+predicted_class3 <- predict (mn_model3, test)
+table(predicted_class3,test$RiskLevel)
+
+```
+
+```{r}
+print(paste0("accuracy=",mean(as.character(predicted_class2) == as.character(test$RiskLevel))))
+print(paste0("AIC=",mn_model2$AIC))
+
+```
+multinomial model 3 (blood sugar, systolic blood pressure)
+```{r, echo=FALSE}
+mn_model3<-multinom(RiskLevel ~ BS+SystolicBP, data=training)
+mn_model3$AIC
+#table(predicted_class3,test$RiskLevel)
+t(confusionMatrix(data = predicted_class3, reference = test$RiskLevel)$byClass) %>% knitr::kable()
+```
+
+
+## Blood Sugar as Predictor: 
+
+### Coefficients:
+```{r, echo = F, message = F}
+mn_model4<-multinom(RiskLevel ~ BS, data=training, trace = F)
+# summary(mn_model4)
+data.frame(summary(mn_model4)$coefficients/summary(mn_model4)$standard.errors) %>% kable() 
+
+
+print(paste0("accuracy=",mean(as.character(predicted_class3) == as.character(test$RiskLevel))))
+print(paste0("AIC=",mn_model3$AIC))
+
+```
+
+multinomial model 4 (blood sugar)
+```{r, echo=FALSE}
+mn_model4<-multinom(RiskLevel ~ BS, data=training)
+
+```
+
+### Confusion Matrix:
+```{r}
+predicted_scores4 <- predict (mn_model4, test, "probs")
+predicted_class4 <- predict (mn_model4, test)
+table(predicted_class2,test$RiskLevel)
+
+```
+
+
+```{r}
+data.frame(summary(mn_model4)$coefficients/summary(mn_model4)$standard.errors) %>% kable() 
+t(confusionMatrix(data = predicted_class4, reference = test$RiskLevel)$byClass) %>% knitr::kable()
+```
+
+## XGBoost Model
+
+
+### Predicting High Risk
+
+```{r}
+xboost.dat = training
+xboost.dat = xboost.dat %>% mutate(high_risk = ifelse(RiskLevel == "high risk", T, F))
+xboost.dat = xboost.dat %>% mutate(mid_risk = ifelse(RiskLevel == "mid risk", T, F))
+
+xboost.dat.test = test
+
+xboost.dat.test = xboost.dat.test %>% mutate(high_risk = ifelse(RiskLevel == "high risk", T, F))
+xboost.dat.test = xboost.dat.test %>% mutate(mid_risk = ifelse(RiskLevel == "mid risk", T, F))
+
+
+grid_default <- expand.grid(
+  nrounds = 100,
+  max_depth = 6,
+  eta = 0.3,
+  gamma = 0,
+  colsample_bytree = 1,
+  min_child_weight = 1,
+  subsample = 1
+)
+
+train_control <- caret::trainControl(
+  method = "none",
+  verboseIter = FALSE, # no training log
+  allowParallel = TRUE # FALSE for reproducible results 
+)
+
+xgb_train_high <- caret::train( x = select(xboost.dat.test, -c("RiskLevel", "high_risk", "mid_risk")),
+  y = as.numeric(xboost.dat.test$high_risk),
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+xgb_train_mid <- caret::train( x = select(xboost.dat.test, -c("RiskLevel", "high_risk", "mid_risk")),
+  y = as.numeric(xboost.dat.test$mid_risk),
+  trControl = train_control,
+  tuneGrid = grid_default,
+  method = "xgbTree",
+  verbose = TRUE
+)
+
+pred.high <- predict(xgb_train_high, select(xboost.dat.test, -c("RiskLevel", "high_risk", "mid_risk")))
+
+vec.pred.high = c(pred.high > 0.5)
+
+(confusionMatrix(data = factor(vec.pred.high), reference = factor(xboost.dat.test$high_risk))$byClass) %>% knitr::kable()
+
+
+# 
+# dtrain.high <- xgb.DMatrix(data = as.matrix(select(xboost.dat, -c("RiskLevel", "high_risk", "low_risk"))), label= unlist(xboost.dat$high_risk))
+# 
+# dtest.high <- xgb.DMatrix(data = as.matrix(select(xboost.dat.test, -c("RiskLevel", "high_risk", "low_risk"))), label= unlist(xboost.dat.test$high_risk))
+# 
+# dtest.low<- xgb.DMatrix(data = as.matrix(select(xboost.dat.test, -c("RiskLevel", "high_risk", "low_risk"))), label= unlist(xboost.dat.test$low_risk))
+# 
+# 
+# dtrain.low <- xgb.DMatrix(data = as.matrix(select(xboost.dat, -c("RiskLevel", "high_risk", "low_risk"))), label= unlist(xboost.dat$low_risk))
+# 
+# 
+# xboost.high <- xgboost(data = dtrain.high, # the data   
+#                  nround = 2, # max number of boosting iterations
+#                  objective = "binary:logistic")  # the objective function
+# 
+# 
+# xboost.low <- xgboost(data = dtrain.low, # the data   
+#                  nround = 2, # max number of boosting iterations
+#                  objective = "binary:logistic")  # the objective function
+# 
+# pred.high <- predict(xboost.high, dtest.high)
+
+print(paste0("accuracy=",mean(as.character(predicted_class4) == as.character(test$RiskLevel))))
+print(paste0("AIC=",mn_model4$AIC))
+
+```
+multinomial model 5 (blood sugar, heart rate, body temp, systolic blood pressure)
+
+```{r, echo=FALSE}
+mn_model5<-multinom(RiskLevel ~ BS+SystolicBP+ HeartRate+BodyTemp, data=training)
+
+
+predicted_scores5 <- predict (mn_model5, test, "probs")
+predicted_class5 <- predict (mn_model5, test)
+table(predicted_class5,test$RiskLevel)
+
+print(paste0("accuracy=",mean(as.character(predicted_class5) == as.character(test$RiskLevel))))
+print(paste0("AIC=",mn_model5$AIC))
+
+```
+
+Ordinal model 1 (all variables)
+
+```{r, echo=FALSE}
+O_model1<-polr(RiskLevel ~ ., data=training, Hess = TRUE)
+
+
+predicted_scores_ord1 <- predict (O_model1, test, "probs")
+predicted_class_ord1 <- predict (O_model1, test)
+table(predicted_class_ord1,test$RiskLevel)
+
+print(paste0("accuracy=",mean(as.character(predicted_class_ord1) == as.character(test$RiskLevel))))
+print(paste0("AIC=",O_model1$AIC))
+
+```
+Ordinal model 2 (blood sugar, systolic blood pressure, age)
+```{r, echo=FALSE}
+O_model2<-polr(RiskLevel ~ Age + SystolicBP + BS, data=training, Hess = TRUE)
+
+
+predicted_scores_ord2 <- predict (O_model2, test, "probs")
+predicted_class_ord2 <- predict (O_model2, test)
+table(predicted_class_ord2,test$RiskLevel)
+
+print(paste0("accuracy=",mean(as.character(predicted_class_ord2) == as.character(test$RiskLevel))))
+print(paste0("AIC=",O_model2$AIC))
+
+```
+Ordinal model 3 (blood sugar, systolic blood pressure)
+
+```{r, echo=FALSE}
+O_model3<-polr(RiskLevel ~ SystolicBP + BS, data=training, Hess = TRUE)
+
+
+predicted_scores_ord3 <- predict (O_model3, test, "probs")
+predicted_class_ord3 <- predict (O_model3, test)
+table(predicted_class_ord3,test$RiskLevel)
+
+print(paste0("accuracy=",mean(as.character(predicted_class_ord3) == as.character(test$RiskLevel))))
+print(paste0("AIC=",O_model3$AIC))
+
+```
+Ordinal model 4 (blood sugar)
+
+```{r, echo=FALSE}
+O_model4<-polr(RiskLevel ~ BS, data=training, Hess = TRUE)
+
+
+predicted_scores_ord4 <- predict (O_model4, test, "probs")
+predicted_class_ord4 <- predict (O_model4, test)
+table(predicted_class_ord4,test$RiskLevel)
+
+print(paste0("accuracy=",mean(as.character(predicted_class_ord4) == as.character(test$RiskLevel))))
+print(paste0("AIC=",O_model4$AIC))
+
+```
+
+### Predicting Medium Risk
+
+```{r}
+
+pred.mid <- predict(xgb_train_mid, select(xboost.dat.test, -c("RiskLevel", "high_risk", "mid_risk")))
+
+vec.pred.mid = c(pred.mid > 0.5)
+
+(confusionMatrix(data = factor(vec.pred.mid), reference = factor(xboost.dat.test$mid_risk))$byClass) %>% knitr::kable()
+```
+
+### GLM model construction:
+
+we first took the approach of trying to predict the level of risk involved with pregnancy using multinomial and ordinal regression modeling. Starting with all variables and then paring down based on correlation to risk level as well as co-linearity in predictors. we selected first age, systolic blood pressure, and blood sugar level as our first set of restricted predicors followed by blood suger and systolic blood pressure for our second. Although we expected to improve the prediction rate by only keeping the most correlated predictors both model 2(systolicBP, Age, blood sugar) and model 3(systolicBP, blood sugar) in both multinomial and ordinal regressions showed a decrease in predictive accuracy when compared to models with all predictors. The only model in wich we saw the best improvment of our predictions was when we only included blood sugar as a predictor. Because assessing pregnancy risk is very important topic and could leaad to life saving interventions we want to strengthen this model and suggest more in depth analysis into this data via unsupervised learning methods. 
+
+# Discussion and Conclusions:
+
+## Model Interpretation:
+First we take a look into multinomial model assessing the accuracy of all predictors and pairing things down to try and improve the model. Starting with the every variable the multinomial model gives a miss error of 41% which is not great. from here we eliminated redundant as well as with low correlation values to the class level. This did not work out as planned. The first paired down model consisting of Age, Systolic blood pressure, and Blood sugar showed an even worse error rate around 44%. pared down more with blood sugar and systolic blood pressure the missclassification was around 48% and the only improvement was upon making a model solely with blood sugar when the error rate dropped to 40%. I believe that this shows the multinomial regression clearly does not reflect or predict the data too well. One potential future for this type of model would be a boosted multinomial model to help improve accuracy of predictions. 
+
+
+# References: 
+
+Be sure to cite all references used in the report (APA format).
+
+#   Appendices:
+#	Supplemental tables and/or figures.
+#	R statistical programming code.
