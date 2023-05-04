@@ -15,8 +15,10 @@ library(jpeg)
 ```
 
 
-
+ 
 ```{r}
+#Import all 14 standardized shoe images
+
 a<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53632.jpg')
 b<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53632.jpg')
 c<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53655.jpg')
@@ -32,6 +34,7 @@ l<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_201
 m<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_54172.jpg')
 n<-readJPEG('C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_2500x1200_2014_us_53626.jpg')
 
+#construct an array of all of the images 
 
 im<-array(rep(0,14*2500*1200*3),dim=c(14, 2500, 1200,3))
 
@@ -50,25 +53,30 @@ im[12,,,]<-array(l, dim=c(1, 1200,2500 ,3))
 im[13,,,]<-array(m, dim=c(1, 1200,2500 ,3))
 im[14,,,]<-array(n, dim=c(1, 1200,2500 ,3))
 
+# copy the array to work with and modify
+
 new_im <-im
 dim(new_im)<-c(14, 1200*2500*3)
+
+# perform pCA analysis and generate the eigan images and format
+
 pca<- princomp(t(as.matrix(new_im)), scores = TRUE, cor = TRUE)
 
 tpca<-t(pca$scores)
 dim(tpca)=c(14,1200,2500,3)
 
-
-  writeJPEG(tpca[1,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_1.jpg')
-    writeJPEG(tpca[2,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_2.jpg')
-    writeJPEG(tpca[3,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_3.jpg')
-    writeJPEG(tpca[4,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_4.jpg')
-    writeJPEG(tpca[5,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_5.jpg')
-  writeJPEG(tpca[6,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_6.jpg')
-  writeJPEG(tpca[7,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_7.jpg')
-  writeJPEG(tpca[8,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_8.jpg')
-  writeJPEG(tpca[9,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_9.jpg')
-  writeJPEG(tpca[10,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_10.jpg')
+# export each eigan image as a jpeg to view 
+writeJPEG(tpca[1,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_1.jpg')
+writeJPEG(tpca[2,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_2.jpg')
+writeJPEG(tpca[3,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_3.jpg')
+writeJPEG(tpca[4,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_4.jpg')
+writeJPEG(tpca[5,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_5.jpg')
+writeJPEG(tpca[6,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_6.jpg')
+writeJPEG(tpca[7,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_7.jpg')
+writeJPEG(tpca[8,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_8.jpg')
+writeJPEG(tpca[9,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_9.jpg')
+writeJPEG(tpca[10,,,], target ='C:\\Users\\danny\\OneDrive\\Documents\\eigenshoes\\RC_eigenshoe_10.jpg')
   
 
 
-
+```
