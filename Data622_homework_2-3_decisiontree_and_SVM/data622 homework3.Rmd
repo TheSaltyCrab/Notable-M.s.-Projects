@@ -1,0 +1,335 @@
+---
+title: "data622 homework 2"
+author: "Daniel Sullivan"
+date: "2023-03-26"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+library(caret)
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(corrplot)
+library(gridExtra)
+library(xgboost)
+library(GGally)
+library(e1071)
+library(caTools)
+library(class)
+library(reshape2)
+library(randomForest)
+library(caTools)
+library(party)
+library(magrittr)
+library(adabag)
+```
+
+# Data download and exploratory graphs. 
+
+```{r}
+pokemon_df<-read.csv("https://raw.githubusercontent.com/TheSaltyCrab/Data-622/main/pokemon.csv?token=GHSAT0AAAAAACBUOLENV66C2AYPJUYI4GCMZCFZDAA")
+
+pokemon_df$type1[pokemon_df$type1=='Blastoise']<-'Water'
+pokemon_df$type1[pokemon_df$type1=='Graass']<-'Grass'
+
+pokemon_df<- pokemon_df%>%mutate(type=case_when(type1=="Grass"~1,type1=="Fire"~2,type1=="Water"~3, type1=="Bug"~4,type1=="Normal"~5,type1=="Dark"~6,type1=="Poison"~7,type1=="Electric"~8, type1=="Ground"~9,type1=="Ice"~10,type1=="Fairy"~11,type1=="Steel"~12,type1=="Fighting"~13,type1=="Psychic"~14,type1=="Rock"~15,type1=="Ghost"~16,type1=="Dragon"~17,type1=="Flying"~18))
+pokemon_df<- pokemon_df%>%mutate(legend=case_when(legendary=="False"~0,legendary=="True"~1))
+
+pokemon_cor<-pokemon_df %>%
+  select(!c(name,number,type1,type2,legendary))
+#unique(pokemon_df$type1)
+#length(unique(pokemon_df$type1))
+#summary(pokemon_trim)
+#head(pokemon_trim)
+summary(pokemon_cor)
+corrplot(cor(pokemon_cor))
+#pokemon_df$type
+```
+With this data my goal was to try and classify my data into legendary pokemon and non-legendary so i began focusing in on that specific column and how it relates to the data. 
+
+```{r}
+ggplot(pokemon_cor, aes(x=as.character(legend), y=total)) + 
+  geom_boxplot()
+ggplot(pokemon_cor, aes(x=as.character(legend), y=hp)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 260))
+ggplot(pokemon_cor, aes(x=as.character(legend), y=attack)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 260))
+ggplot(pokemon_cor, aes(x=as.character(legend), y=defense)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 260))
+ggplot(pokemon_cor, aes(x=as.character(legend), y=sp_attack)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 260))
+ggplot(pokemon_cor, aes(x=as.character(legend), y=sp_defense)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 260))
+ggplot(pokemon_cor, aes(x=as.character(legend), y=speed)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 260))
+```
+
+
+
+
+# Models
+
+### Decision Tree With all variables
+
+created a data partition in order to make my test and train data sets and modeled a decision tree with all variables.
+```{r}
+set.seed(9)
+p = createDataPartition(pokemon_cor$type, p = .7, list = F)
+train_p =pokemon_cor[p, ]
+#print(train_p$type)
+test_p = pokemon_cor[-p, ]
+
+model_allvar<-ctree(legend~.,train_p)
+plot(model_allvar)
+
+prediction1<-round(predict(model_allvar, test_p))
+#prediction1[1]
+#test_p$legend
+cm1<-(confusionMatrix(data = factor(prediction1), reference = factor(test_p$legend)))
+cm1
+```
+### Decision Tree With restricted variables
+
+Seeing a weird decision node where it was classifying off of generation which their should not really be any relationship between the two i decided to strip the variables down to total stats, special attack, and attack.
+```{r}
+model_smallvar<-ctree(legend~total+sp_attack+attack,train_p)
+plot(model_smallvar)
+
+test_small_p<-test_p%>%select(c(total,sp_attack,attack))
+
+prediction2<-round(predict(model_smallvar, test_small_p))
+#prediction1[1]
+#test_p$legend
+for (i in 1:length(prediction2+1)){
+  if (prediction2[i] == 1){
+    prediction2[i]<-0
+  }
+  else{
+    prediction2[i]<-1
+  }
+  
+}
+
+
+#prediction2
+cm2<-(confusionMatrix(data = factor(prediction2), reference = factor(test_p$legend)))
+cm2
+
+```
+### Random Forest With All Variables
+
+implemented ensemble bagging(random forest) in order to see if their was an improvement with this method.
+```{r}
+train_p$legend<-as.factor(train_p$legend)
+train_x<-train_p %>% select(!legend)
+train_y<-as.factor(train_p$legend)
+
+test_x<-test_p %>% select(!legend)
+test_y<-as.factor(test_p$legend)
+
+
+set.seed(9)
+model_forest <- randomForest(
+  formula = legend ~ .,
+  x=train_x,y=train_y, xtest = test_x, ytest = test_y
+)
+
+min<-which.min(model_forest$err.rate)
+
+model_forest$confusion
+
+model_forest <- randomForest(
+  formula = legend ~ .,
+  data=train_p, ntree = min
+)
+
+predictionT<-predict(model_forest, test_x)
+#print(prediction)
+#predictionT<-round(predictionT)
+#prediction1[]
+#test_air$month[]
+#test_air$month
+cmT<-(confusionMatrix(data = factor(predictionT), reference = factor(test_y)))
+cmT
+
+```
+
+```{r}
+#print(model_forest$err.rate)
+#plot(model_forest)
+#model_forest$forest
+
+#print(min)
+```
+
+### AdaBoost model All Variables
+
+seeing the random forest hardly improved the classification i wanted to test some boosting tree methods. 
+```{r}
+model_adaboost <- boosting(legend~., data=train_p, boos=TRUE, mfinal=50)
+summary(model_adaboost)
+
+```
+```{r}
+predict_ada = predict(model_adaboost, test_p)
+predict_ada$confusion
+print("accuracy")
+print(1-predict_ada$error)
+print("sensitivity")
+print(27/(27+5))
+print("specificity")
+print(277/(277+10))
+print("precision")
+print(27/(27+10))
+print("balanced accuracy")
+print((0.9651568+0.84375)/2)
+
+
+#predict_ada$prob
+#cmT<-(confusionMatrix(data = factor(predict_ada), #reference = factor(test_y)))
+#cmT
+
+```
+
+# Homework 3 SVM vs decision trees
+
+```{r}
+#train_p$legend<-as.factor(train_p$legend)
+#train_x<-train_p %>% select(!legend)%>%scale()
+#train_y<-as.factor(train_p$legend)
+
+#test_x<-test_p %>% select(!legend)%>%scale()
+#test_y<-as.factor(test_p$legend)
+
+train_p$legend<-as.numeric(train_p$legend)
+
+scale_tr_p = scale(train_p)
+scale_ts_p = scale(test_p)
+scale_tr_p$legend<-as.factor(train_p$legend)
+scale_ts_p$legend<-as.factor(test_p$legend)
+
+#train_p
+```
+
+```{r}
+svm_model_lin = svm(formula = legend ~ .,data = train_p,type = 'C-classification',kernel = 'linear')
+
+svm_predict<-as.numeric(predict(svm_model_lin, test_p))
+#svm_predict
+#svm_predict[0]
+for (i in 1:length(svm_predict+1)){
+  if (svm_predict[i] == 1){
+    svm_predict[i]<-0
+  }
+  else{
+    svm_predict[i]<-1
+  }
+  
+}
+#svm_predict
+cm_svm<-(confusionMatrix(data = factor(svm_predict), reference = factor(test_y)))
+cm_svm
+```
+
+```{r}
+svm_model_rad = svm(formula = legend ~ .,data = train_p,type = 'C-classification',kernel = 'radial')
+
+svm_predict_rad<-as.numeric(predict(svm_model_rad, test_p))
+#svm_predict
+#svm_predict[0]
+for (i in 1:length(svm_predict_rad+1)){
+  if (svm_predict_rad[i] == 1){
+    svm_predict_rad[i]<-0
+  }
+  else{
+    svm_predict_rad[i]<-1
+  }
+  
+}
+#svm_predict
+cm_svm_rad<-(confusionMatrix(data = factor(svm_predict_rad), reference = factor(test_y)))
+cm_svm_rad
+```
+```{r}
+svm_model_pol = svm(formula = legend ~ .,data = train_p,type = 'C-classification',kernel = 'polynomial')
+
+svm_predict_pol<-as.numeric(predict(svm_model_pol, test_p))
+#svm_predict
+#svm_predict[0]
+for (i in 1:length(svm_predict_pol+1)){
+  if (svm_predict_pol[i] == 1){
+    svm_predict_pol[i]<-0
+  }
+  else{
+    svm_predict_pol[i]<-1
+  }
+  
+}
+#svm_predict
+cm_svm_pol<-(confusionMatrix(data = factor(svm_predict_pol), reference = factor(test_y)))
+cm_svm_pol
+```
+```{r}
+svm_model_sig = svm(formula = legend ~ .,data = train_p,type = 'C-classification',kernel = 'sigmoid')
+
+svm_predict_sig<-as.numeric(predict(svm_model_sig, test_p))
+#svm_predict
+#svm_predict[0]
+for (i in 1:length(svm_predict_sig+1)){
+  if (svm_predict_sig[i] == 1){
+    svm_predict_sig[i]<-0
+  }
+  else{
+    svm_predict_sig[i]<-1
+  }
+  
+}
+#svm_predict
+cm_svm_sig<-(confusionMatrix(data = factor(svm_predict_sig), reference = factor(test_y)))
+cm_svm_sig
+```
+```{r}
+svm_model_tot = svm(formula = legend ~ total,data = train_p,type = 'C-classification',kernel = 'linear')
+
+svm_predict_tot<-as.numeric(predict(svm_model_tot, test_p))
+#svm_predict
+#svm_predict[0]
+for (i in 1:length(svm_predict_tot+1)){
+  if (svm_predict_tot[i] == 1){
+    svm_predict_tot[i]<-0
+  }
+  else{
+    svm_predict_tot[i]<-1
+  }
+  
+}
+#svm_predict
+cm_svm_tot<-(confusionMatrix(data = factor(svm_predict_tot), reference = factor(test_y)))
+cm_svm_tot
+```
+
+
+```{r}
+svm_model_spe = svm(formula = legend ~ total,data = train_p,type = 'C-classification',kernel = 'linear')
+
+svm_predict_spe<-as.numeric(predict(svm_model_spe, test_p))
+#svm_predict
+#svm_predict[0]
+for (i in 1:length(svm_predict_spe+1)){
+  if (svm_predict_spe[i] == 1){
+    svm_predict_spe[i]<-0
+  }
+  else{
+    svm_predict_spe[i]<-1
+  }
+  
+}
+#svm_predict
+cm_svm_spe<-(confusionMatrix(data = factor(svm_predict_spe), reference = factor(test_y)))
+cm_svm_spe
+```

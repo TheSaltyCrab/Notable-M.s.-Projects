@@ -1,0 +1,549 @@
+---
+title: "Data622_HW1"
+author: "Daniel Sullivan"
+date: "2023-03-07"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+library(caret)
+library(tidyverse)
+library(ggplot2)
+library(readr)
+library(corrplot)
+library(gridExtra)
+library(xgboost)
+library(GGally)
+library(e1071)
+library(caTools)
+library(class)
+library(reshape2)
+library(randomForest)
+```
+
+# First data set, from Kaggle on air quality in north Carolina
+
+## Data exploration
+
+begin by loading the data and modifiying date time column so it is a bit easier to work with. then get data summaries
+```{r}
+air_q=read.csv("https://raw.githubusercontent.com/TheSaltyCrab/Data-622/main/air-quality.csv")
+air_q$Last_Check<-as.POSIXlt(air_q$Last_Check,format="%Y/%m/%d %H:%M:%S",tz=Sys.timezone())
+air_q$Week_Day<-as.numeric(air_q$Last_Check$wday)
+air_q$month<-as.numeric(air_q$Last_Check$mon)
+air_q$hour<-as.numeric(air_q$Last_Check$hour)
+air_q$Last_Check<-as.POSIXct(air_q$Last_Check,format="%Y/%m/%d %H:%M:%S",tz=Sys.timezone())
+
+air_q<-air_q %>%
+  select(!c(X,Y,Site_Label,Inside_Outside,ObjectId))
+summary(air_q)
+```
+
+these below chunks show the plots of the various ppm readings/averages and targets some interesting features that were noticed. 
+
+```{r}
+#air_q$Week_Day<-air_q$Last_Check$wday
+#air_q$Last_Check
+#library(scales)
+#head(air_q,1000)
+a1=ggplot(air_q, aes(Last_Check, Current_Particulate_Matter_2_5_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+b1=ggplot(head(air_q,11000), aes(Last_Check, Current_Particulate_Matter_2_5_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+c1=ggplot(head(air_q,500), aes(Last_Check, Current_Particulate_Matter_2_5_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+d1=ggplot(tail(air_q,489), aes(Last_Check, Current_Particulate_Matter_2_5_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+grid.arrange(a1,b1,c1,d1)
+       #scale_x_datetime(labels = date_format("%H:%M:%S"))
+#air_q$Last_Check[1]
+```
+```{r}
+a2=ggplot(air_q, aes(Last_Check, PM_2_5_30_Minute_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+b2=ggplot(head(air_q,11000), aes(Last_Check, PM_2_5_30_Minute_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+c2=ggplot(head(air_q,500), aes(Last_Check, PM_2_5_30_Minute_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+d2=ggplot(tail(air_q,489), aes(Last_Check, PM_2_5_30_Minute_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+grid.arrange(a2,b2,c2,d2)
+```
+```{r}
+a3=ggplot(air_q, aes(Last_Check, PM_2_5_6_Hour_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+b3=ggplot(head(air_q,11000), aes(Last_Check, PM_2_5_6_Hour_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+c3=ggplot(head(air_q,500), aes(Last_Check, PM_2_5_6_Hour_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+d3=ggplot(tail(air_q,489), aes(Last_Check, PM_2_5_6_Hour_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+grid.arrange(a3,b3,c3,d3)
+```
+```{r}
+a4=ggplot(air_q, aes(Last_Check, PM_2_5_24_Hour_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+b4=ggplot(head(air_q,11000), aes(Last_Check, PM_2_5_24_Hour_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+c4=ggplot(head(air_q,500), aes(Last_Check, PM_2_5_24_Hour_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+d4=ggplot(tail(air_q,489), aes(Last_Check, PM_2_5_24_Hour_Avg_)) +
+       geom_point() +
+       theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+grid.arrange(a4,b4,c4,d4)
+```
+```{r}
+a7<-ggplot(air_q, aes(x=as.character(Week_Day), y=Current_Particulate_Matter_2_5_), group=) + 
+  geom_boxplot()
+b7=ggplot(air_q, aes(x=as.character(month), y=Current_Particulate_Matter_2_5_), group=) + 
+  geom_boxplot()
+c7=ggplot(air_q, aes(x=as.character(hour), y=Current_Particulate_Matter_2_5_), group=) + 
+  geom_boxplot()
+grid.arrange(a7,b7,c7)
+
+```
+
+```{r}
+#ggplot(air_q, aes(x=as.character(Week_Day), y=PM_2_5_24_Hour_Avg_)) + 
+#  geom_boxplot()
+a5=ggplot(air_q, aes(x=as.character(Week_Day), y=PM_2_5_24_Hour_Avg_)) + 
+  geom_boxplot()
+b5=ggplot(air_q, aes(x=as.character(month), y=PM_2_5_24_Hour_Avg_)) + 
+  geom_boxplot()
+c5=ggplot(air_q, aes(x=as.character(hour), y=PM_2_5_24_Hour_Avg_), group=) + 
+  geom_boxplot()
+
+grid.arrange(a5,b5,c5)
+```
+```{r}
+#ggplot(air_q, aes(x=as.character(Week_Day), y=PM_2_5_24_Hour_Avg_)) + 
+#  geom_boxplot()
+a6=ggplot(air_q, aes(x=as.character(Week_Day), y=PM_2_5_6_Hour_Avg_)) + 
+  geom_boxplot()
+b6=ggplot(air_q, aes(x=as.character(month), y=PM_2_5_6_Hour_Avg_), group=) + 
+  geom_boxplot()
+c6=ggplot(air_q, aes(x=as.character(hour), y=PM_2_5_6_Hour_Avg_), group=) + 
+  geom_boxplot()
+
+grid.arrange(a6,b6,c6)
+```
+
+```{r}
+#ggplot(air_q, aes(x=as.character(Week_Day), y=PM_2_5_24_Hour_Avg_)) + 
+#  geom_boxplot()
+a8=ggplot(air_q, aes(x=as.character(Week_Day), y=Temp__F_)) + 
+  geom_boxplot()
+b8=ggplot(air_q, aes(x=as.character(month), y=Temp__F_), group=) + 
+  geom_boxplot()
+c8=ggplot(air_q, aes(x=as.character(hour), y=Temp__F_), group=) + 
+  geom_boxplot()
+
+grid.arrange(a8,b8,c8)
+```
+correlation matrix for each data point after cleaning the data frame.
+```{r}
+modeling_df<-air_q %>%
+  select(!c(Week_Day,hour,Latitude,Longitude,Age_of_Data_at_Check__minutes_,Last_Check,Hardware_Issues,Uptime__Seconds_,RSSI__WiFi_signal_strength_dBm_))
+summary(modeling_df)
+#ggpairs(modeling_df)
+colnames(modeling_df)<-c('current_ppm','ppm_10min','ppm_30min','ppm_1hr','ppm_6hr','ppm_24hr','ppm1week','temp_f','humidity','pressure','month')
+
+corrplot(cor(modeling_df))
+
+```
+
+## partitioning data for train and test subsets.
+
+```{r}
+set.seed(9)
+x = createDataPartition(modeling_df$month, p = .8, list = F)
+train_air = modeling_df[x, ]
+test_air = modeling_df[-x, ]
+train_air_x = data.matrix(train_air[, -11])
+train_air_y = train_air[,11]
+test_air_x = data.matrix(test_air[, -11])
+test_air_y = test_air[, 11]
+xgb_train_air = xgb.DMatrix(data = train_air_x, label = train_air_y)
+xgb_test_air = xgb.DMatrix(data = test_air_x, label = test_air_y)
+
+```
+
+## Air Quality random forest model
+```{r}
+set.seed(9)
+tree_model <- randomForest(
+  formula = month ~ .,
+  x=train_air_x,y=train_air_y, xtest = test_air_x, ytest = test_air_y
+)
+
+min<-which.min(tree_model$mse)
+#train_air_x
+tree_model_final <- randomForest(
+  formula = month ~ .,
+  data=train_air, ntree = min
+)
+
+#train_air$ppm_10min
+
+```
+```{r}
+predictionT<-predict(tree_model_final, test_air_x)
+#print(prediction)
+predictionT<-round(predictionT,0)
+#prediction1[]
+#test_air$month[]
+#test_air$month
+cmT<-(confusionMatrix(data = factor(predictionT), reference = factor(test_air_y)))
+cmT
+```
+
+## Air quality XGboost model
+
+I modified some of the code from this article to guide me through XGboosting: https://www.statology.org/xgboost-in-r/
+```{r, echo=FALSE}
+#define watchlist
+watchlist = list(train=xgb_train_air, test=xgb_test_air)
+
+#fit XGBoost model and display training and testing data at each round
+model = xgb.train(data = xgb_train_air, max.depth = 3, watchlist=watchlist, nrounds = 2000)
+
+#It apears that the number of iterations that reduce test and training rmse is 1963
+
+final_boost_1<-xgboost(data = xgb_train_air, max.depth = 3, nrounds = 1996, verbose = 0)
+```
+
+```{r}
+prediction1<-predict(final_boost_1, xgb_test_air)
+#print(prediction)
+prediction1<-round(prediction1,0)
+#prediction1<-lapply(prediction1, function(x) ifelse(x <0, 0, x))
+#prediction1
+for (i in 1:length(prediction1)){
+  #print(i)
+  if (prediction1[i]<0){
+    prediction1[i]<-0
+    #print(prediction1[i])
+  }
+  if (prediction1[i]>11){
+    prediction1[i]<-11
+  }
+}
+#test_air$month[]
+#test_air$mont
+#test_air_y
+#unique(prediction1)
+cm1<-(confusionMatrix(data = factor(prediction1), reference = factor(test_air_y)))
+cm1
+```
+
+
+
+####################################################################################
+
+# Data Set two The Pokedex
+
+## Import second dataset the ultimate Pokedex. containing over 1000 pokemon entries. 
+
+```{r}
+pokemon_df<-read.csv("https://raw.githubusercontent.com/TheSaltyCrab/Data-622/main/pokemon.csv")
+
+#pokemon_trim
+
+unique(pokemon_df$type1)
+length(unique(pokemon_df$type1))
+```
+## Data exploration
+
+Replace miss labeled data points.and run summary statistics
+```{r}
+pokemon_df$type1[pokemon_df$type1=='Blastoise']<-'Water'
+pokemon_df$type1[pokemon_df$type1=='Graass']<-'Grass'
+
+pokemon_df<- pokemon_df%>%mutate(type=case_when(type1=="Grass"~1,type1=="Fire"~2,type1=="Water"~3, type1=="Bug"~4,type1=="Normal"~5,type1=="Dark"~6,type1=="Poison"~7,type1=="Electric"~8, type1=="Ground"~9,type1=="Ice"~10,type1=="Fairy"~11,type1=="Steel"~12,type1=="Fighting"~13,type1=="Psychic"~14,type1=="Rock"~15,type1=="Ghost"~16,type1=="Dragon"~17,type1=="Flying"~18))
+
+pokemon_trim<-pokemon_df %>%
+  select(!c(name,type2,number,legendary))
+#unique(pokemon_df$type1)
+#length(unique(pokemon_df$type1))
+#summary(pokemon_trim)
+
+summary(pokemon_trim)
+#pokemon_df$type
+```
+plots for each stat type sorted by type
+```{r}
+#ggplot(air_q, aes(x=as.character(Week_Day), y=PM_2_5_24_Hour_Avg_)) + 
+#  geom_boxplot()
+p1=ggplot(pokemon_trim, aes(x=type1, y=total)) + 
+  geom_boxplot()
+p2=ggplot(pokemon_trim, aes(x=type1, y=hp)) + 
+  geom_boxplot()
+p3=ggplot(pokemon_trim, aes(x=type1, y=attack)) + 
+  geom_boxplot()
+p4=ggplot(pokemon_trim, aes(x=type1, y=defense)) + 
+  geom_boxplot()
+p5=ggplot(pokemon_trim, aes(x=type1, y=sp_attack)) + 
+  geom_boxplot()
+p6=ggplot(pokemon_trim, aes(x=type1, y=sp_defense)) + 
+  geom_boxplot()
+p7=ggplot(pokemon_trim, aes(x=type1, y=speed)) + 
+  geom_boxplot()
+p8=ggplot(pokemon_trim, aes(x=as.character(generation), y=total)) + 
+  geom_boxplot()
+p9=ggplot(pokemon_trim, aes(x=type1, y=generation)) + 
+  geom_boxplot()
+p1
+p2
+p3
+p4
+p5
+p6
+p7
+p8
+p9
+grid.arrange(p1,p2,p3,p4,p5,p6,p7,p8,p9)
+```
+```{r}
+pokemon_df[pokemon_trim$generation==0,]
+```
+
+```{r}
+
+dat_m <- melt(pokemon_trim, id.vars = "type1")
+#head(dat_m,50)
+
+# plot data
+fire<-dat_m[dat_m$type1=="Fire",]
+water<-dat_m[dat_m$type1=="Water",]
+flying<-dat_m[dat_m$type1=="Flying",]
+grass<-dat_m[dat_m$type1=="Grass",]
+normal<-dat_m[dat_m$type1=="Normal",]
+bug<-dat_m[dat_m$type1=="Bug",]
+dark<-dat_m[dat_m$type1=="Dark",]
+poison<-dat_m[dat_m$type1=="Poison",]
+electric<-dat_m[dat_m$type1=="Electric",]
+ground<-dat_m[dat_m$type1=="Ground",]
+ice<-dat_m[dat_m$type1=="Ice",]
+fairy<-dat_m[dat_m$type1=="Fairy",]
+steel<-dat_m[dat_m$type1=="Steel",]
+fighting<-dat_m[dat_m$type1=="Fighting",]
+psychic<-dat_m[dat_m$type1=="Psychic",]
+rock<-dat_m[dat_m$type1=="Rock",]
+ghost<-dat_m[dat_m$type1=="Ghost",]
+dragon<-dat_m[dat_m$type1=="Dragon",]
+fir<-ggplot(fire, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("fire")
+wat<-ggplot(water, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("water")
+fly<-ggplot(flying, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("flying")
+gra<-ggplot(grass, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("grass")
+nor<-ggplot(normal, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("normal")
+g_bug<-ggplot(bug, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("bug")
+dar<-ggplot(dark, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("dark")
+poi<-ggplot(poison, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("poison")
+ele<-ggplot(electric, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("electric")
+gro<-ggplot(ground, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("ground")
+g_ice<-ggplot(ice, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("ice")
+fai<-ggplot(fairy, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("fairy")
+ste<-ggplot(steel, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("steel")
+fig<-ggplot(fighting, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("fighting")
+psy<-ggplot(psychic, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("psychic")
+roc<-ggplot(rock, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("rock")
+gho<-ggplot(ghost, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("ghost")
+dra<-ggplot(dragon, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("dragon")
+
+grid.arrange(fir,wat,fly,gra,nor,g_bug,dar,poi,ele,gro,g_ice,fai,ste,fig,psy,roc,gho,dra)
+```
+plots for each type sorted by stats
+```{r}
+ggplot(fire, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("fire")
+ggplot(water, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("water")
+ggplot(flying, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("flying")
+ggplot(grass, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("grass")
+ggplot(normal, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("normal")
+ggplot(bug, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("bug")
+ggplot(dark, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("dark")
+ggplot(poison, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("poison")
+ggplot(electric, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("electric")
+ggplot(ground, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("ground")
+ggplot(ice, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("ice")
+ggplot(fairy, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("fairy")
+ggplot(steel, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("steel")
+ggplot(fighting, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("fighting")
+ggplot(psychic, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("psychic")
+ggplot(rock, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("rock")
+ggplot(ghost, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("ghost")
+ggplot(dragon, aes(x=variable, y=value)) + 
+  geom_boxplot()+coord_cartesian(ylim = c(0, 800))+ggtitle("dragon")
+
+```
+correlation matrix
+
+```{r}
+#pokemon_trim['type1']
+#mon_ma <- as.matrix(pokemon_trim[, 1:9])
+#mon_ma
+pokemon_slim<-pokemon_trim %>%
+    select(!type1)
+corrplot(cor(pokemon_slim))
+
+summary(pokemon_df$type)
+```
+partitioning the data into train and test sets. and scaling for kNN
+```{r}
+set.seed(9)
+pokemon_knn<-pokemon_trim%>% select(!type1)
+#head(pokemon_knn)
+len<-length(pokemon_trim$type1)
+#print(len)
+square<-sqrt(len)
+#print(square)
+k<-round(square)
+
+y = createDataPartition(pokemon_knn$type, p = .8, list = F)
+train_y = pokemon_trim[y, ]
+test_y = pokemon_trim[-y, ]
+train_scale <- scale(train_y[, 2:9])
+test_scale <- scale(test_y[, 2:9])
+```
+
+## KNN pokemon model 
+
+explore multiple values for K
+```{r}
+#print(k)
+for (i in 5:(k+10)){
+  set.seed(9)
+  classifier_knn <- knn(train = train_scale,
+                      test = test_scale,
+                      cl = train_y$type,
+                      k=i)
+  cm<-as.matrix(table(Actual = test_y$type, Predicted = classifier_knn))
+  print(i)
+  print(sum(diag(cm))/length(test_y$type))
+  #classifier_knn
+}
+# best k value is 21 
+```
+
+final KNN model
+```{r}
+#relevel(test_y)
+#levels(classifier_knn)
+set.seed(9)
+classifier_knn_final <- knn(train = train_scale,
+                      test = test_scale,
+                      cl = train_y$type,
+                      k=8)
+cm_knn<-(confusionMatrix(data = factor(classifier_knn_final), reference = factor(test_y$type)))
+
+cm_knn
+
+#cm <- confusionMatrix(test_y$type1, classifier_knn)
+#cm$overall['Accuracy']
+```
+
+## Pokemon XGboost model
+```{r}
+set.seed(9)
+#pokemon_trim<-pokemon_trim  %>% select(!type1)
+p = createDataPartition(pokemon_trim$type, p = .8, list = F)
+train_p = pokemon_trim[p, ]
+#print(train_p$type)
+test_p = pokemon_trim[-p, ]
+#train_z[,10]
+train_px = data.matrix(train_p[, -10])
+train_py = train_p[,10]
+#train_py
+test_px = data.matrix(test_p[, -10])
+test_py = test_p[, 10]
+#length(train_zy)
+#train_zx
+
+xgb_train = xgb.DMatrix(data = train_px, label = train_py)
+xgb_test = xgb.DMatrix(data = test_px, label = test_py)
+#train_zy
+#pokemon_trim$type
+```
+```{r}
+#define watchlist
+watchlist = list(train=xgb_train, test=xgb_test)
+
+#fit XGBoost model and display training and testing data at each round
+model = xgb.train(data = xgb_train, max.depth = 3, watchlist=watchlist, nrounds = 475)
+```
+#It apears that the number of iterations that reduce test and training rmse is 1963
+```{r}
+final_boost2<-xgboost(data = xgb_train, max.depth = 3, nrounds = 464, verbose = 0)
+prediction2<-predict(final_boost2, as.matrix(test_px))
+#print(prediction)
+prediction2<-round(prediction2,0)
+#prediction
+
+cm2<-cm_knn<-(confusionMatrix(data = factor(prediction2), reference = factor(test_py)))
+cm2
+```
+
+
+##########################################################################################################################
+
